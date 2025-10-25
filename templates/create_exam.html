@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+  <div class="page-header">
+    <h1>📝 Create New Exam</h1>
+    <p>Set up a new exam with questions and configure proctoring settings</p>
+  </div>
+
+  <form method="post" action="{{ url_for('create_exam') }}">
+    <!-- Exam Basic Information -->
+    <div class="card mb-4">
+      <div class="card-header">
+        <h3 class="mb-0">📋 Exam Details</h3>
+      </div>
+      <div class="card-body">
+        <div class="form-group">
+          <label for="title">Exam Title</label>
+          <input type="text" id="title" name="title" required placeholder="Enter exam title (e.g., Mathematics Final Exam)">
+        </div>
+        
+        <div class="form-row">
+          <div class="form-group">
+            <label for="duration">Duration (minutes)</label>
+            <input type="number" id="duration" name="duration" value="60" required min="5" max="300" placeholder="60">
+          </div>
+          <div class="form-group">
+            <label for="max_questions">Maximum Questions (≤50)</label>
+            <input type="number" id="max_questions" name="max_questions" value="10" min="1" max="50" required placeholder="10">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Questions Section -->
+    <div class="card mb-4">
+      <div class="card-header">
+        <h3 class="mb-0">❓ Questions (Optional)</h3>
+        <p class="small mb-0">Add questions now or edit them later. You can add up to the maximum number specified above.</p>
+      </div>
+      <div class="card-body">
+        <div id="questions-container">
+          {% for i in range(1,11) %}
+            <div class="question-block" data-question="{{ i }}">
+              <div class="question-header">
+                <h4>Question {{ i }}</h4>
+                <button type="button" class="btn small secondary toggle-question" onclick="toggleQuestion({{ i }})">
+                  <span class="toggle-text">Expand</span>
+                </button>
+              </div>
+              
+              <div class="question-content" style="display: none;">
+                <div class="form-group">
+                  <label for="q{{ i }}">Question Text</label>
+                  <input type="text" id="q{{ i }}" name="q{{ i }}" placeholder="Enter your question here">
+                </div>
+                
+                <div class="options-grid">
+                  <div class="form-group">
+                    <label for="a{{ i }}">Option A</label>
+                    <input type="text" id="a{{ i }}" name="a{{ i }}" placeholder="Option A">
+                  </div>
+                  <div class="form-group">
+                    <label for="b{{ i }}">Option B</label>
+                    <input type="text" id="b{{ i }}" name="b{{ i }}" placeholder="Option B">
+                  </div>
+                  <div class="form-group">
+                    <label for="c{{ i }}">Option C</label>
+                    <input type="text" id="c{{ i }}" name="c{{ i }}" placeholder="Option C">
+                  </div>
+                  <div class="form-group">
+                    <label for="d{{ i }}">Option D</label>
+                    <input type="text" id="d{{ i }}" name="d{{ i }}" placeholder="Option D">
+                  </div>
+                </div>
+                
+                <div class="form-group">
+                  <label for="corr{{ i }}">Correct Answer</label>
+                  <select id="corr{{ i }}" name="corr{{ i }}">
+                    <option value="">-- Select Correct Answer --</option>
+                    <option value="A">A</option>
+                    <option value="B">B</option>
+                    <option value="C">C</option>
+                    <option value="D">D</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Submit Section -->
+    <div class="card">
+      <div class="card-body text-center">
+        <button type="submit" class="btn primary large">
+          🚀 Create Exam
+        </button>
+        <p class="small mt-2" style="color: var(--text-secondary);">
+          You can always edit questions and settings after creating the exam
+        </p>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+function toggleQuestion(questionNum) {
+  const content = document.querySelector(`[data-question="${questionNum}"] .question-content`);
+  const toggleText = document.querySelector(`[data-question="${questionNum}"] .toggle-text`);
+  
+  if (content.style.display === 'none') {
+    content.style.display = 'block';
+    toggleText.textContent = 'Collapse';
+  } else {
+    content.style.display = 'none';
+    toggleText.textContent = 'Expand';
+  }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+  <div class="page-header">
+    <h1>🔍 Attempt Details #{{ att.id }}</h1>
+    <p>{{ att.exam_title }}</p>
+    <div class="action-buttons">
+      <a href="{{ url_for('admin_results') }}" class="btn secondary">
+        ← Back to Results
+      </a>
+    </div>
+  </div>
+
+  <!-- Attempt Summary -->
+  <div class="card mb-4">
+    <div class="card-header">
+      <h3 class="mb-0">📊 Attempt Summary</h3>
+    </div>
+    <div class="card-body">
+      <div class="attempt-summary">
+        <div class="summary-item">
+          <span class="label">👤 Student:</span>
+          <span class="value">{{ att.username }}</span>
+        </div>
+        <div class="summary-item">
+          <span class="label">⏰ Start Time:</span>
+          <span class="value">{{ att.start_time }}</span>
+        </div>
+        <div class="summary-item">
+          <span class="label">🏁 End Time:</span>
+          <span class="value">{{ att.end_time or 'Not finished' }}</span>
+        </div>
+        <div class="summary-item">
+          <span class="label">📈 Score:</span>
+          <span class="value">
+            {% if att.score is not none %}
+              <span class="badge {% if att.score >= 70 %}success{% elif att.score >= 50 %}warning{% else %}danger{% endif %}">
+                {{ att.score }}%
+              </span>
+            {% else %}
+              <span class="badge secondary">Not graded</span>
+            {% endif %}
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Proctoring Data -->
+  <div class="card mb-4">
+    <div class="card-header">
+      <h3 class="mb-0">📷 Proctoring Snapshots</h3>
+    </div>
+    <div class="card-body">
+      {% if images %}
+        <div class="snapshots-grid">
+          {% for img in images %}
+            <div class="snapshot-item">
+              <a href="{{ url_for('serve_image', fname=img.filename) }}" target="_blank" class="snapshot-link">
+                <img src="{{ url_for('serve_image', fname=img.filename) }}" class="thumb" alt="Snapshot">
+                <div class="snapshot-overlay">
+                  <span>🔍 View Full Size</span>
+                </div>
+              </a>
+              <div class="snapshot-time">{{ img.timestamp }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">
+          <p>📷 No snapshots captured during this attempt</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Audio Recordings -->
+  <div class="card mb-4">
+    <div class="card-header">
+      <h3 class="mb-0">🎤 Audio Recordings</h3>
+    </div>
+    <div class="card-body">
+      {% if audios %}
+        <div class="audio-list">
+          {% for a in audios %}
+            <div class="audio-item">
+              <div class="audio-controls">
+                <audio controls src="{{ url_for('serve_audio', fname=a.filename) }}"></audio>
+              </div>
+              <div class="audio-time">{{ a.timestamp }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">
+          <p>🎤 No audio recordings captured during this attempt</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Events Log -->
+  <div class="card mb-4">
+    <div class="card-header">
+      <h3 class="mb-0">⚠️ Security Events</h3>
+      <p class="small mb-0">Tab switches, focus changes, and other suspicious activities</p>
+    </div>
+    <div class="card-body">
+      {% if events %}
+        <div class="table-responsive">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>⏰ Time</th>
+                <th>🚨 Event Type</th>
+                <th>📝 Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for e in events %}
+                <tr>
+                  <td class="small">{{ e.timestamp }}</td>
+                  <td>
+                    <span class="badge warning">{{ e.event_type }}</span>
+                  </td>
+                  <td class="small">{{ e.detail }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="empty-state">
+          <p>✅ No suspicious events detected during this attempt</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Questions & Answers -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="mb-0">❓ Questions & Answers</h3>
+    </div>
+    <div class="card-body">
+      {% if q_and_a %}
+        <div class="questions-list">
+          {% for qa in q_and_a %}
+            <div class="question-item">
+              <div class="question-header">
+                <h4>{{ qa.q_index }}. {{ qa.question }}</h4>
+              </div>
+              
+              <div class="options-display">
+                <div class="option-item">
+                  <span class="option-label">A:</span>
+                  <span class="option-text">{{ qa.option_a }}</span>
+                </div>
+                <div class="option-item">
+                  <span class="option-label">B:</span>
+                  <span class="option-text">{{ qa.option_b }}</span>
+                </div>
+                <div class="option-item">
+                  <span class="option-label">C:</span>
+                  <span class="option-text">{{ qa.option_c }}</span>
+                </div>
+                <div class="option-item">
+                  <span class="option-label">D:</span>
+                  <span class="option-text">{{ qa.option_d }}</span>
+                </div>
+              </div>
+              
+              <div class="answer-summary">
+                <div class="answer-item">
+                  <span class="label">✅ Correct Answer:</span>
+                  <span class="badge success">{{ qa.correct }}</span>
+                </div>
+                <div class="answer-item">
+                  <span class="label">👤 Student Selected:</span>
+                  {% if qa.selected %}
+                    <span class="badge {% if qa.selected == qa.correct %}success{% else %}danger{% endif %}">
+                      {{ qa.selected }}
+                    </span>
+                  {% else %}
+                    <span class="badge secondary">No answer</span>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">
+          <p>❓ No questions found for this attempt</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

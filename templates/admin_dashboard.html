@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="dashboard-wrapper">
+  <header class="dashboard-header">
+    <div class="header-content">
+      <h1 class="header-title">
+        <span class="header-icon">📊</span>
+        Admin Dashboard
+      </h1>
+      <div class="header-actions">
+        <button class="action-button primary" onclick="window.location.href='{{ url_for('create_exam') }}'">
+          <span class="button-icon">➕</span>
+          Create Exam
+        </button>
+        <button class="action-button secondary" onclick="window.location.href='{{ url_for('admin_results') }}'">
+          <span class="button-icon">📈</span>
+          View Results
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Real-time Stats -->
+  <div class="stats-grid" id="admin-stats" data-role="admin">
+    <div class="stat-card">
+      <div class="stat-value" id="stat-total-exams">-</div>
+      <div class="stat-label">Total Exams</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="stat-total-attempts">-</div>
+      <div class="stat-label">Total Attempts</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="stat-active-attempts">-</div>
+      <div class="stat-label">Active Attempts</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="stat-avg-score">-</div>
+      <div class="stat-label">Average Score</div>
+    </div>
+  </div>
+
+  <!-- Exams Section -->
+  <div class="card mb-4">
+    <div class="card-header">
+      <h3 class="mb-0">📝 Exams</h3>
+    </div>
+    <div class="card-body">
+      {% if exams %}
+        <div class="exam-list">
+          {% for ex in exams %}
+            <div class="exam-item">
+              <div class="exam-info">
+                <h4 class="exam-title">{{ ex.title }}</h4>
+                <div class="exam-meta">
+                  <span class="badge">⏱️ {{ ex.duration_minutes }} min</span>
+                  <span class="badge">❓ {{ ex.max_questions }} questions</span>
+                </div>
+              </div>
+              <div class="exam-actions">
+                <a href="{{ url_for('edit_exam', exam_id=ex.id) }}" class="btn small">
+                  ✏️ Edit
+                </a>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">
+          <p>📋 No exams created yet</p>
+          <a href="{{ url_for('create_exam') }}" class="btn primary">Create your first exam</a>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Recent Attempts Section -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="mb-0">🕒 Recent Attempts</h3>
+    </div>
+    <div class="card-body">
+      {% if attempts %}
+        <div class="table-responsive">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>👤 User</th>
+                <th>📝 Exam</th>
+                <th>🕐 Start Time</th>
+                <th>📊 Score</th>
+                <th>✅ Submitted</th>
+                <th>⏰ Time Exceeded</th>
+                <th>🔍 Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for a in attempts %}
+                <tr>
+                  <td><strong>{{ a.username }}</strong></td>
+                  <td>{{ a.exam_title }}</td>
+                  <td class="small">{{ a.start_time }}</td>
+                  <td>
+                    {% if a.score is not none %}
+                      <span class="score-badge">{{ a.score }}%</span>
+                    {% else %}
+                      <span class="text-muted">-</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if a.submitted %}
+                      <span class="status-badge success">✅ Yes</span>
+                    {% else %}
+                      <span class="status-badge warning">⏳ No</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if a.time_exceeded %}
+                      <span class="status-badge danger">⚠️ Yes</span>
+                    {% else %}
+                      <span class="status-badge success">✅ No</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    <a href="{{ url_for('admin_attempt_detail', attempt_id=a.id) }}" class="btn small">
+                      👁️ View
+                    </a>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="empty-state">
+          <p>📊 No exam attempts yet</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

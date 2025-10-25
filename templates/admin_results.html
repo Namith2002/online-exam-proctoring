@@ -1,0 +1,298 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+  <div class="page-header">
+    <h1>📊 All Exam Results</h1>
+    <p>Comprehensive view of all student exam attempts and their results</p>
+    <div class="action-buttons">
+      <a href="{{ url_for('admin_dashboard') }}" class="btn secondary">
+        ← Back to Dashboard
+      </a>
+    </div>
+  </div>
+
+  <!-- Summary Statistics -->
+  <div class="stats-grid mb-4">
+    <div class="stat-card">
+      <div class="stat-value">{{ attempts|length }}</div>
+      <div class="stat-label">📊 Total Attempts</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">{{ attempts|selectattr('submitted')|list|length }}</div>
+      <div class="stat-label">✅ Submitted</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">{{ attempts|selectattr('time_exceeded')|list|length }}</div>
+      <div class="stat-label">⏰ Time Exceeded</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">
+        {% set submitted_attempts = attempts|selectattr('submitted')|selectattr('score', 'defined')|list %}
+        {% if submitted_attempts %}
+          {% set total_scores = 0 %}
+          {% set total_count = 0 %}
+          {% for attempt in submitted_attempts %}
+            {% if attempt.score is not none %}
+              {% set total_scores = total_scores + attempt.score %}
+              {% set total_count = total_count + 1 %}
+            {% endif %}
+          {% endfor %}
+          {% if total_count > 0 %}
+            {{ "%.1f"|format(total_scores / total_count) }}%
+          {% else %}
+            N/A
+          {% endif %}
+        {% else %}
+          N/A
+        {% endif %}
+      </div>
+      <div class="stat-label">📈 Average Score</div>
+    </div>
+  </div>
+
+  <!-- Top Performers -->
+  {% set top_scored = attempts|selectattr('score')|list %}
+  {% if top_scored %}
+  <div class="card mb-4">
+    <div class="card-header">
+      <h3 class="mb-0">🏆 Top Performers</h3>
+      <p class="small mb-0">Highest scoring students across all exams</p>
+    </div>
+    <div class="card-body">
+      <div class="ranking-grid">
+        {% for a in top_scored[:3] %}
+          <div class="ranking-card">
+            <div class="rank-left">
+              {% if loop.index == 1 %}
+                <span class="rank-badge gold">🥇</span>
+              {% elif loop.index == 2 %}
+                <span class="rank-badge silver">🥈</span>
+              {% elif loop.index == 3 %}
+                <span class="rank-badge bronze">🥉</span>
+              {% endif %}
+            </div>
+            <div class="rank-info">
+              <div class="rank-name">{{ a.username }}</div>
+              <div class="rank-meta">{{ a.exam_title }}</div>
+            </div>
+            <div class="rank-score">
+              <span class="score-badge {% if a.score >= 80 %}success{% elif a.score >= 60 %}warning{% else %}danger{% endif %}">{{ a.score }}%</span>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Filters and Search -->
+  <div class="card mb-4">
+    <div class="card-header">
+      <h3 class="mb-0">🔍 Filter & Search</h3>
+    </div>
+    <div class="card-body">
+      <div class="filter-controls">
+        <div class="form-row">
+          <div class="form-group">
+            <input type="text" id="search-attempts" placeholder="🔍 Search by student name or exam..." class="form-control">
+          </div>
+          <div class="form-group">
+            <select id="filter-status" class="form-control">
+              <option value="">All Status</option>
+              <option value="submitted">✅ Submitted</option>
+              <option value="pending">⏳ Pending</option>
+              <option value="exceeded">⏰ Time Exceeded</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <select id="filter-score" class="form-control">
+              <option value="">All Scores</option>
+              <option value="excellent">🌟 Excellent (80%+)</option>
+              <option value="good">👍 Good (60-79%)</option>
+              <option value="needs-improvement">📚 Needs Improvement (<60%)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Exam Attempts Cards -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="mb-0">📈 All Exam Attempts</h3>
+      <div class="view-toggle">
+        <button id="card-view" class="btn small secondary active">📋 Cards</button>
+        <button id="table-view" class="btn small secondary">📊 Table</button>
+      </div>
+    </div>
+    <div class="card-body">
+      {% if attempts %}
+        <!-- Card View -->
+        <div id="attempts-cards" class="attempts-grid">
+          {% for a in attempts %}
+            <div class="attempt-card" data-student="{{ a.username|lower }}" data-exam="{{ a.exam_title|lower }}" data-status="{% if a.submitted %}submitted{% elif a.time_exceeded %}exceeded{% else %}pending{% endif %}" data-score="{% if a.score %}{% if a.score >= 80 %}excellent{% elif a.score >= 60 %}good{% else %}needs-improvement{% endif %}{% endif %}">
+              <div class="attempt-header">
+                <div class="attempt-rank">
+                  {% if loop.index == 1 %}
+                    <span class="rank-badge gold">🥇</span>
+                  {% elif loop.index == 2 %}
+                    <span class="rank-badge silver">🥈</span>
+                  {% elif loop.index == 3 %}
+                    <span class="rank-badge bronze">🥉</span>
+                  {% else %}
+                    <span class="rank-badge">#{{ loop.index }}</span>
+                  {% endif %}
+                </div>
+                <div class="attempt-id">
+                  <span class="badge secondary">#{{ a.id }}</span>
+                </div>
+              </div>
+              
+              <div class="attempt-student">
+                <div class="student-avatar">👤</div>
+                <div class="student-info">
+                  <h4>{{ a.username }}</h4>
+                  <p>{{ a.exam_title }}</p>
+                </div>
+              </div>
+
+              <div class="attempt-score">
+                {% if a.score is not none and a.submitted %}
+                  {% set total_questions = a.total_questions if a.total_questions is defined else 0 %}
+                  {% if total_questions > 0 %}
+                    {% set correct_answers = ((a.score|float * total_questions / 100)|round(0, 'floor')) %}
+                    <div class="score-circle {% if a.score >= 80 %}success{% elif a.score >= 60 %}warning{% else %}danger{% endif %}">
+                      <span class="score-value">{{ a.score|float }}%</span>
+                      <span class="score-raw">({{ correct_answers|int }}/{{ total_questions }})</span>
+                    </div>
+                  {% else %}
+                    <div class="score-circle pending">
+                      <span class="score-value">N/A</span>
+                    </div>
+                  {% endif %}
+                {% else %}
+                  <div class="score-circle pending">
+                    <span class="score-value">?</span>
+                  </div>
+                {% endif %}
+              </div>
+
+              <div class="attempt-details">
+                <div class="detail-item">
+                  <span class="detail-label">🕐 Started:</span>
+                  <span class="detail-value">{{ a.start_time }}</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">🕑 Ended:</span>
+                  <span class="detail-value">{{ a.end_time or 'In Progress' }}</span>
+                </div>
+              </div>
+
+              <div class="attempt-status">
+                <div class="status-badges">
+                  {% if a.submitted %}
+                    <span class="status-badge success">✅ Submitted</span>
+                  {% else %}
+                    <span class="status-badge warning">⏳ Pending</span>
+                  {% endif %}
+                  
+                  {% if a.time_exceeded %}
+                    <span class="status-badge danger">⏰ Time Exceeded</span>
+                  {% endif %}
+                </div>
+              </div>
+
+              <div class="attempt-actions">
+                <a href="{{ url_for('admin_attempt_detail', attempt_id=a.id) }}" class="btn primary small full-width">
+                  👁️ View Details
+                </a>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+
+        <!-- Table View (Hidden by default) -->
+        <div id="attempts-table" class="table-responsive" style="display: none;">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>🏅 Rank</th>
+                <th>🆔 ID</th>
+                <th>👤 Student</th>
+                <th>📝 Exam</th>
+                <th>🕐 Start Time</th>
+                <th>🕑 End Time</th>
+                <th>📊 Score</th>
+                <th>✅ Submitted</th>
+                <th>⏰ Time Exceeded</th>
+                <th>🔍 Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for a in attempts %}
+                <tr class="table-row" data-student="{{ a.username|lower }}" data-exam="{{ a.exam_title|lower }}" data-status="{% if a.submitted %}submitted{% elif a.time_exceeded %}exceeded{% else %}pending{% endif %}" data-score="{% if a.score %}{% if a.score >= 80 %}excellent{% elif a.score >= 60 %}good{% else %}needs-improvement{% endif %}{% endif %}">
+                  <td>
+                    {% if loop.index == 1 %}
+                      <span class="rank-badge gold">🥇</span>
+                    {% elif loop.index == 2 %}
+                      <span class="rank-badge silver">🥈</span>
+                    {% elif loop.index == 3 %}
+                      <span class="rank-badge bronze">🥉</span>
+                    {% else %}
+                      <span class="rank-badge">#{{ loop.index }}</span>
+                    {% endif %}
+                  </td>
+                  <td><span class="badge secondary">#{{ a.id }}</span></td>
+                  <td><strong>{{ a.username }}</strong></td>
+                  <td>{{ a.exam_title }}</td>
+                  <td class="small">{{ a.start_time }}</td>
+                  <td class="small">{{ a.end_time or '-' }}</td>
+                  <td>
+                    {% if a.score is not none %}
+                      <span class="score-badge 
+                        {% if a.score >= 80 %}success
+                        {% elif a.score >= 60 %}warning
+                        {% else %}danger
+                        {% endif %}">
+                        {{ a.score }}%
+                      </span>
+                    {% else %}
+                      <span class="text-muted">Not graded</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if a.submitted %}
+                      <span class="status-badge success">✅ Yes</span>
+                    {% else %}
+                      <span class="status-badge warning">⏳ No</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if a.time_exceeded %}
+                      <span class="status-badge danger">⚠️ Yes</span>
+                    {% else %}
+                      <span class="status-badge success">✅ No</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    <a href="{{ url_for('admin_attempt_detail', attempt_id=a.id) }}" class="btn small primary">
+                      👁️ View Details
+                    </a>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="empty-state">
+          <h3>📊 No exam attempts yet</h3>
+          <p>Students haven't taken any exams yet. Create an exam and share it with students to get started.</p>
+          <a href="{{ url_for('create_exam') }}" class="btn primary">Create First Exam</a>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
