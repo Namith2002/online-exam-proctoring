@@ -71,10 +71,6 @@
                 <span class="rank-badge bronze">🥉</span>
               {% endif %}
             </div>
-            <div class="rank-info">
-              <div class="rank-name">{{ a.username }}</div>
-              <div class="rank-meta">{{ a.exam_title }}</div>
-            </div>
             <div class="rank-score">
               <span class="score-badge {% if a.score >= 80 %}success{% elif a.score >= 60 %}warning{% else %}danger{% endif %}">{{ a.score }}%</span>
             </div>
@@ -85,6 +81,7 @@
   </div>
   {% endif %}
 
+  
   <!-- Filters and Search -->
   <div class="card mb-4">
     <div class="card-header">
@@ -129,9 +126,25 @@
     <div class="card-body">
       {% if attempts %}
         <!-- Card View -->
-        <div id="attempts-cards" class="attempts-grid">
-          {% for a in attempts %}
-            <div class="attempt-card" data-student="{{ a.username|lower }}" data-exam="{{ a.exam_title|lower }}" data-status="{% if a.submitted %}submitted{% elif a.time_exceeded %}exceeded{% else %}pending{% endif %}" data-score="{% if a.score %}{% if a.score >= 80 %}excellent{% elif a.score >= 60 %}good{% else %}needs-improvement{% endif %}{% endif %}">
+        {% set grouped_attempts = {} %}
+        {% for a in attempts %}
+          {% if a.exam_title not in grouped_attempts %}
+            {% set _ = grouped_attempts.update({a.exam_title: []}) %}
+          {% endif %}
+          {% set _ = grouped_attempts[a.exam_title].append(a) %}
+        {% endfor %}
+        
+        <div id="attempts-cards">
+          {% for exam_title, exam_attempts in grouped_attempts.items() %}
+            <div class="card mb-4">
+              <div class="card-header">
+                <h3 class="mb-0">{{ exam_title }}</h3>
+                <p class="text-muted">{{ exam_attempts|length }} attempt(s)</p>
+              </div>
+              <div class="card-body">
+                <div class="attempts-grid">
+                  {% for a in exam_attempts %}
+                    <div class="attempt-card" data-student="{{ a.username|lower }}" data-exam="{{ a.exam_title|lower }}" data-status="{% if a.submitted %}submitted{% elif a.time_exceeded %}exceeded{% else %}pending{% endif %}" data-score="{% if a.score %}{% if a.score >= 80 %}excellent{% elif a.score >= 60 %}good{% else %}needs-improvement{% endif %}{% endif %}">
               <div class="attempt-header">
                 <div class="attempt-rank">
                   {% if loop.index == 1 %}
@@ -167,8 +180,8 @@
                       <span class="score-raw">({{ correct_answers|int }}/{{ total_questions }})</span>
                     </div>
                   {% else %}
-                    <div class="score-circle pending">
-                      <span class="score-value">N/A</span>
+                    <div class="score-circle">
+                      <span class="score-value">{{ a.score|float }}%</span>
                     </div>
                   {% endif %}
                 {% else %}
@@ -207,6 +220,10 @@
                 <a href="{{ url_for('admin_attempt_detail', attempt_id=a.id) }}" class="btn primary small full-width">
                   👁️ View Details
                 </a>
+              </div>
+                    </div>
+                  {% endfor %}
+                </div>
               </div>
             </div>
           {% endfor %}

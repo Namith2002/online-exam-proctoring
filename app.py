@@ -309,22 +309,38 @@ def proctor_upload_image():
 # ------------------ PROCTOR: UPLOAD AUDIO ------------------
 @app.route("/proctor/upload_audio", methods=["POST"])
 def proctor_upload_audio():
+    if 'user_id' not in session:
+        return jsonify({"status":"error","msg":"unauthorized"}), 401
+        
     attempt_id = request.form.get("attempt_id")
     audio = request.files.get("audio")
+    
+    if not attempt_id:
+        return jsonify({"status":"error","msg":"missing attempt_id"}), 400
     if not audio:
-        return jsonify({"status":"error","msg":"no audio"}), 400
+        return jsonify({"status":"error","msg":"no audio file"}), 400
+        
+    # Verify file type and size
+    if not audio.filename.lower().endswith(('.webm', '.wav', '.mp3')):
+        return jsonify({"status":"error","msg":"invalid audio format"}), 400
+    if len(audio.read()) > MAX_MB * 1024 * 1024:  # Check against MAX_MB limit
+        return jsonify({"status":"error","msg":"file too large"}), 400
+    audio.seek(0)  # Reset file pointer after reading
+    
     try:
         fname = f"{uuid.uuid4().hex}.webm"
         path = os.path.join(UPLOAD_AUDIO, fname)
-        # Ensure the audio file is saved correctly
+        
+        # Ensure upload directory exists
+        os.makedirs(UPLOAD_AUDIO, exist_ok=True)
+        
+        # Save the file
         try:
-            if not os.path.exists(UPLOAD_AUDIO):
-                os.makedirs(UPLOAD_AUDIO, exist_ok=True)
             audio.save(path)
             if not os.path.exists(path) or os.path.getsize(path) == 0:
                 raise ValueError("Failed to save audio file or file is empty")
         except Exception as e:
-            print(f"Error saving audio file: {str(e)}")
+            app.logger.error(f"Error saving audio file: {str(e)}")
             return jsonify({"status":"error","msg":"failed to save audio"}), 500
 
         conn = get_conn(); cur = conn.cursor()
@@ -393,22 +409,39 @@ def admin_results():
     if 'user_id' not in session or not session.get('is_admin'):
         return redirect(url_for("admin_login"))
     conn = get_conn(); cur = conn.cursor()
-    cur.execute("""SELECT a.*, u.username AS username, e.title AS exam_title, e.max_questions
-                   FROM attempts a
-                   LEFT JOIN users u ON u.id=a.user_id
-                   LEFT JOIN exams e ON e.id=a.exam_id
-                   ORDER BY (a.score IS NULL) ASC, a.score DESC, a.start_time DESC""")
-    attempts_raw = cur.fetchall()
-    attempts = []
-    for a in attempts_raw:
-        # Get actual total questions for this attempt (in case exam was edited)
-        cur.execute("SELECT COUNT(*) FROM questions WHERE exam_id=?", (a['exam_id'],))
-        total_questions = cur.fetchone()[0]
-        attempt = dict(a)
-        attempt['total_questions'] = total_questions
-        attempts.append(attempt)
+    # Get all attempts with additional data including raw scores
+    cur.execute("""
+        SELECT 
+            a.*,
+            u.username,
+            e.title as exam_title,
+            e.max_questions,
+            COUNT(DISTINCT CASE WHEN ans.selected = q.correct THEN ans.id END) as raw_score
+        FROM attempts a
+        LEFT JOIN users u ON u.id = a.user_id
+        LEFT JOIN exams e ON e.id = a.exam_id
+        LEFT JOIN answers ans ON ans.attempt_id = a.id
+        LEFT JOIN questions q ON q.id = ans.question_id
+        GROUP BY a.id, a.user_id, a.exam_id, a.start_time, a.end_time, a.submitted, 
+                a.score, a.time_exceeded, a.allowed_until, u.username, e.title, e.max_questions
+        ORDER BY (a.score IS NULL) ASC, a.score DESC, a.start_time DESC""")
+    attempts = cur.fetchall()
+    
+    # Prepare results list for grouped exam results
+    results = []
+    for a in attempts:
+        if a['submitted'] and a['score'] is not None:
+            results.append({
+                'exam_name': a['exam_title'],
+                'student_name': a['username'],
+                'score': a['score'],
+                'raw_score': a['raw_score'],
+                'total_questions': a['max_questions'],
+                'timestamp': a['end_time']
+            })
+    
     conn.close()
-    return render_template("admin_results.html", attempts=attempts)
+    return render_template("admin_results.html", attempts=attempts, results=results)
 
 # ------------------ ADMIN: VIEW ATTEMPT DETAIL ------------------
 @app.route("/admin/attempt/<int:attempt_id>")
@@ -445,7 +478,31 @@ def serve_image(fname):
 
 @app.route("/uploads/proctor_audio/<path:fname>")
 def serve_audio(fname):
-    return send_from_directory(UPLOAD_AUDIO, fname)
+    if 'user_id' not in session:
+        abort(401)  # Unauthorized
+    if not session.get('is_admin'):
+        # For non-admins, verify they own the attempt
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT pa.* FROM proctor_audio pa
+            JOIN attempts a ON a.id = pa.attempt_id
+            WHERE pa.filename = ? AND a.user_id = ?
+        """, (fname, session['user_id']))
+        if not cur.fetchone():
+            conn.close()
+            abort(403)  # Forbidden
+        conn.close()
+    
+    # Validate filename
+    if not fname or '..' in fname or not os.path.exists(os.path.join(UPLOAD_AUDIO, fname)):
+        abort(404)
+    
+    try:
+        return send_from_directory(UPLOAD_AUDIO, fname, mimetype='audio/webm')
+    except Exception as e:
+        app.logger.error(f"Error serving audio file {fname}: {str(e)}")
+        abort(500)
 
 # ------------------ API: Admin Stats ------------------
 @app.route("/api/admin/stats")

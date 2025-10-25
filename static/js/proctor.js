@@ -11,6 +11,9 @@
 
   let stream = null;
   let mediaRecorder = null;
+  let recordingRetries = 0;
+  const MAX_RETRIES = 3;
+  const MAX_FILE_SIZE = 6 * 1024 * 1024; // 6MB
 
   function setStatus(msg, type) {
     if (!proctorStatus) return;
@@ -96,29 +99,117 @@
 
   // audio recording chunks
   function initAudioRecording() {
-    if (!stream || typeof MediaRecorder === 'undefined') return;
-    try {
-      mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-    } catch (err) {
-      console.warn("MediaRecorder not available:", err);
-      setStatus('Audio recording unavailable; continuing with video only', 'warning');
+    if (!stream || typeof MediaRecorder === 'undefined') {
+      setStatus('Audio recording unavailable', 'warning');
       return;
     }
-    mediaRecorder.addEventListener('dataavailable', (e) => {
+
+    // Try different MIME types in order of preference
+    const mimeTypes = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/ogg;codecs=opus',
+      'audio/mp4'
+    ];
+
+    let selectedType = null;
+    for (const type of mimeTypes) {
+      if (MediaRecorder.isTypeSupported(type)) {
+        selectedType = type;
+        break;
+      }
+    }
+
+    if (!selectedType) {
+      setStatus('No supported audio format found', 'warning');
+      return;
+    }
+
+    try {
+      mediaRecorder = new MediaRecorder(stream, {
+        mimeType: selectedType,
+        audioBitsPerSecond: 128000 // 128kbps
+      });
+    } catch (err) {
+      console.warn("MediaRecorder setup failed:", err);
+      setStatus('Audio recording setup failed', 'warning');
+      return;
+    }
+
+    mediaRecorder.addEventListener('dataavailable', async (e) => {
       if (!e.data || e.data.size === 0) return;
+      
+      // Check file size before uploading
+      if (e.data.size > MAX_FILE_SIZE) {
+        console.warn("Audio chunk too large:", e.data.size);
+        return;
+      }
+
       const fd = new FormData();
       fd.append('attempt_id', ATTEMPT_ID);
-      fd.append('audio', e.data, 'chunk.webm');
-      fetch(AUDIO_UPLOAD, { method:'POST', body: fd }).catch(e => console.error("audio upload failed", e));
+      fd.append('audio', e.data, `chunk_${Date.now()}.webm`);
+      
+      try {
+        const response = await fetch(AUDIO_UPLOAD, { 
+          method: 'POST', 
+          body: fd 
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        // Reset retry counter on successful upload
+        recordingRetries = 0;
+      } catch (error) {
+        console.error("Audio upload failed:", error);
+        if (recordingRetries < MAX_RETRIES) {
+          recordingRetries++;
+          setTimeout(startChunk, 1000);
+        } else {
+          setStatus('Audio recording stopped due to errors', 'warning');
+        }
+      }
     });
+
     function startChunk() {
       if (mediaRecorder.state === 'recording') return;
-      mediaRecorder.start();
-      setTimeout(() => {
-        if (mediaRecorder.state === 'recording') mediaRecorder.stop();
-      }, 20000);
+      try {
+        mediaRecorder.start();
+        setTimeout(() => {
+          if (mediaRecorder.state === 'recording') {
+            try {
+              mediaRecorder.stop();
+            } catch (err) {
+              console.warn("Error stopping recording:", err);
+            }
+          }
+        }, 20000);
+      } catch (err) {
+        console.warn("Error starting recording:", err);
+        if (recordingRetries < MAX_RETRIES) {
+          recordingRetries++;
+          setTimeout(startChunk, 1000);
+        }
+      }
     }
-    mediaRecorder.addEventListener('stop', () => { setTimeout(startChunk, 1000); });
+
+    mediaRecorder.addEventListener('stop', () => {
+      if (recordingRetries < MAX_RETRIES) {
+        setTimeout(startChunk, 1000);
+      }
+    });
+
+    mediaRecorder.addEventListener('error', (event) => {
+      console.error("MediaRecorder error:", event.error);
+      if (recordingRetries < MAX_RETRIES) {
+        recordingRetries++;
+        setTimeout(startChunk, 1000);
+      } else {
+        setStatus('Audio recording stopped due to errors', 'warning');
+      }
+    });
+
     startChunk();
   }
 
