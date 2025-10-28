@@ -56,7 +56,7 @@
   </div>
 
   <!-- Top Performers -->
-  {% set top_scored = attempts|selectattr('score')|list %}
+  {% set top_scored = attempts|selectattr('score')|sort(attribute='score', reverse=true)|list %}
   {% if top_scored %}
   <div class="card mb-4">
     <div class="card-header">
@@ -75,6 +75,10 @@
               {% elif loop.index == 3 %}
                 <span class="rank-badge bronze">🥉</span>
               {% endif %}
+            </div>
+            <div class="rank-center">
+              <div class="student-name">{{ a.username }}</div>
+              <div class="exam-name">{{ a.exam_title }}</div>
             </div>
             <div class="rank-score">
               <span class="score-badge {% if a.score >= 80 %}success{% elif a.score >= 60 %}warning{% else %}danger{% endif %}">{{ a.score }}%</span>

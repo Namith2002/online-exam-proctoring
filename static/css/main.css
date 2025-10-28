@@ -1110,6 +1110,32 @@ select:focus {
 }
 .rank-info .rank-name { font-weight: 600; color: var(--text-primary); }
 .rank-info .rank-meta { color: var(--text-secondary); font-size: 0.85rem; }
+
+/* Top Performers ranking center section */
+.rank-center {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0; /* Allow text to truncate */
+}
+
+.rank-center .student-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rank-center .exam-name {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .rank-score { justify-self: end; }
 
 /* Table tweaks for rank column */
