@@ -2,8 +2,13 @@
 {% block content %}
 <div class="container">
   <div class="page-header">
-    <h1>📊 All Exam Results</h1>
-    <p>Comprehensive view of all student exam attempts and their results</p>
+    {% if exam_title %}
+      <h1>📊 Results — {{ exam_title }}</h1>
+      <p>Attempts and scores for the selected exam</p>
+    {% else %}
+      <h1>📊 All Exam Results</h1>
+      <p>Comprehensive view of all student exam attempts and their results</p>
+    {% endif %}
     <div class="action-buttons">
       <a href="{{ url_for('admin_dashboard') }}" class="btn secondary">
         ← Back to Dashboard

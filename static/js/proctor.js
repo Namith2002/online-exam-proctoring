@@ -1,6 +1,6 @@
 // static/js/proctor.js
 // expects global variables:
-// ATTEMPT_ID, IMG_UPLOAD, AUDIO_UPLOAD, SAVE_ANSWER_URL, LOG_EVENT_URL, SERVER_ALLOWED_UNTIL (optional ISO string)
+// ATTEMPT_ID, IMG_UPLOAD, SAVE_ANSWER_URL, LOG_EVENT_URL, SERVER_ALLOWED_UNTIL (optional ISO string)
 
 (function(){
   const video = document.getElementById('video');
@@ -10,10 +10,7 @@
   const consentModal = document.getElementById('consentModal');
 
   let stream = null;
-  let mediaRecorder = null;
-  let recordingRetries = 0;
-  const MAX_RETRIES = 3;
-  const MAX_FILE_SIZE = 6 * 1024 * 1024; // 6MB
+  let snapshotInterval = null;
 
   function setStatus(msg, type) {
     if (!proctorStatus) return;
@@ -25,15 +22,14 @@
 
   async function startMedia() {
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       video.srcObject = stream;
       try { await video.play(); } catch(_) {}
-      setStatus("Webcam & microphone active for proctoring (consent given)", 'success');
+      setStatus("Webcam active for proctoring (consent given)", 'success');
       initSnapshotInterval();
-      initAudioRecording();
     } catch (err) {
       console.error(err);
-      setStatus("Unable to access camera/microphone: " + err.message, 'danger');
+      setStatus("Unable to access camera: " + err.message, 'danger');
       const retryId = 'proctor-retry';
       let btn = document.getElementById(retryId);
       if (!btn) {
@@ -82,7 +78,7 @@
     const fd = new FormData();
     fd.append('attempt_id', ATTEMPT_ID);
     fd.append('image', dataUrl);
-    fetch(IMG_UPLOAD, { method: 'POST', body: fd })
+    fetch(IMG_UPLOAD, { method: 'POST', body: fd, credentials: 'same-origin' })
       .then(res => {
         if (!res.ok) {
           console.warn("Image upload returned", res.status, res.statusText);
@@ -91,126 +87,9 @@
       .catch(e => console.error("img upload failed", e));
   }
 
-  let snapshotInterval = null;
   function initSnapshotInterval() {
     captureAndUpload();
     snapshotInterval = setInterval(captureAndUpload, 15000);
-  }
-
-  // audio recording chunks
-  function initAudioRecording() {
-    if (!stream || typeof MediaRecorder === 'undefined') {
-      setStatus('Audio recording unavailable', 'warning');
-      return;
-    }
-
-    // Try different MIME types in order of preference
-    const mimeTypes = [
-      'audio/webm;codecs=opus',
-      'audio/webm',
-      'audio/ogg;codecs=opus',
-      'audio/mp4'
-    ];
-
-    let selectedType = null;
-    for (const type of mimeTypes) {
-      if (MediaRecorder.isTypeSupported(type)) {
-        selectedType = type;
-        break;
-      }
-    }
-
-    if (!selectedType) {
-      setStatus('No supported audio format found', 'warning');
-      return;
-    }
-
-    try {
-      mediaRecorder = new MediaRecorder(stream, {
-        mimeType: selectedType,
-        audioBitsPerSecond: 128000 // 128kbps
-      });
-    } catch (err) {
-      console.warn("MediaRecorder setup failed:", err);
-      setStatus('Audio recording setup failed', 'warning');
-      return;
-    }
-
-    mediaRecorder.addEventListener('dataavailable', async (e) => {
-      if (!e.data || e.data.size === 0) return;
-      
-      // Check file size before uploading
-      if (e.data.size > MAX_FILE_SIZE) {
-        console.warn("Audio chunk too large:", e.data.size);
-        return;
-      }
-
-      const fd = new FormData();
-      fd.append('attempt_id', ATTEMPT_ID);
-      fd.append('audio', e.data, `chunk_${Date.now()}.webm`);
-      
-      try {
-        const response = await fetch(AUDIO_UPLOAD, { 
-          method: 'POST', 
-          body: fd 
-        });
-        
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        // Reset retry counter on successful upload
-        recordingRetries = 0;
-      } catch (error) {
-        console.error("Audio upload failed:", error);
-        if (recordingRetries < MAX_RETRIES) {
-          recordingRetries++;
-          setTimeout(startChunk, 1000);
-        } else {
-          setStatus('Audio recording stopped due to errors', 'warning');
-        }
-      }
-    });
-
-    function startChunk() {
-      if (mediaRecorder.state === 'recording') return;
-      try {
-        mediaRecorder.start();
-        setTimeout(() => {
-          if (mediaRecorder.state === 'recording') {
-            try {
-              mediaRecorder.stop();
-            } catch (err) {
-              console.warn("Error stopping recording:", err);
-            }
-          }
-        }, 20000);
-      } catch (err) {
-        console.warn("Error starting recording:", err);
-        if (recordingRetries < MAX_RETRIES) {
-          recordingRetries++;
-          setTimeout(startChunk, 1000);
-        }
-      }
-    }
-
-    mediaRecorder.addEventListener('stop', () => {
-      if (recordingRetries < MAX_RETRIES) {
-        setTimeout(startChunk, 1000);
-      }
-    });
-
-    mediaRecorder.addEventListener('error', (event) => {
-      console.error("MediaRecorder error:", event.error);
-      if (recordingRetries < MAX_RETRIES) {
-        recordingRetries++;
-        setTimeout(startChunk, 1000);
-      } else {
-        setStatus('Audio recording stopped due to errors', 'warning');
-      }
-    });
-
-    startChunk();
   }
 
   // autosave answers
@@ -288,14 +167,28 @@
     try {
       captureAndUpload();
       logEvent('beforeunload', '');
-      if (mediaRecorder && mediaRecorder.state === 'recording') {
-        try { mediaRecorder.stop(); } catch(_) {}
-      }
       if (stream) {
         try { stream.getTracks().forEach(t => t.stop()); } catch(_) {}
       }
     } catch (err) {}
   });
+
+  // Stop proctoring before actual form submission to avoid concurrent writes
+  const examForm = document.getElementById('examForm');
+  if (examForm) {
+    examForm.addEventListener('submit', () => {
+      try {
+        if (snapshotInterval) {
+          clearInterval(snapshotInterval);
+          snapshotInterval = null;
+        }
+        if (stream) {
+          try { stream.getTracks().forEach(t => t.stop()); } catch(_) {}
+        }
+        setStatus('Proctoring stopped, submitting exam...', 'success');
+      } catch (_) {}
+    });
+  }
 
   if (!consentModal) {
     startMedia();

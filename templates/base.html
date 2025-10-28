@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/modern-dashboard.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/exam.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_dashboard.css') }}">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
 </head>
 <body>
@@ -24,7 +25,6 @@
             {% if session.username %}
               {% if session.is_admin %}
                 <a href="{{ url_for('admin_dashboard') }}" class="{{ 'active' if request.endpoint == 'admin_dashboard' else '' }}">📊 Dashboard</a>
-                <a href="{{ url_for('admin_results') }}" class="{{ 'active' if request.endpoint == 'admin_results' else '' }}">📈 Results</a>
                 <a href="{{ url_for('create_exam') }}" class="{{ 'active' if request.endpoint == 'create_exam' else '' }}">✏️ Create Exam</a>
               {% else %}
                 <a href="{{ url_for('student_dashboard') }}" class="{{ 'active' if request.endpoint == 'student_dashboard' else '' }}">📚 Dashboard</a>

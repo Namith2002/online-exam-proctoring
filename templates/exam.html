@@ -18,9 +18,8 @@
     <h3>🔒 Proctoring Consent Required</h3>
     <p>To maintain exam integrity, we need to:</p>
     <ul style="margin: 1rem 0; padding-left: 1.5rem;">
-      <li>Access your camera and microphone</li>
+      <li>Access your camera</li>
       <li>Take periodic snapshots (every 15 seconds)</li>
-      <li>Record short audio clips (every 20 seconds)</li>
     </ul>
     <p><strong>Privacy Notice:</strong> All recordings are encrypted and only accessible to exam administrators for integrity verification.</p>
     <div class="consent-actions">
@@ -36,7 +35,7 @@
   <div class="proctor-info">
     <p id="proctorStatus" class="proctor-status waiting">🔄 Waiting for consent...</p>
     <p class="small">
-      📸 Snapshots every 15s • 🎤 Audio clips every 20s<br>
+      📸 Snapshots every 15s<br>
       Keep your face visible and avoid suspicious behavior
     </p>
   </div>
@@ -238,7 +237,7 @@
   // pass server allowed_until safely to JS using tojson (will be a quoted string)
   const ATTEMPT_ID = "{{ attempt_id }}";
   const IMG_UPLOAD = "{{ url_for('proctor_upload_image') }}";
-  const AUDIO_UPLOAD = "{{ url_for('proctor_upload_audio') }}";
+  
   const SAVE_ANSWER_URL = "{{ url_for('save_answer') }}";
   const LOG_EVENT_URL = "{{ url_for('proctor_log_event') }}";
   const SERVER_ALLOWED_UNTIL = {{ allowed_until | tojson }}; // ISO UTC time string from server

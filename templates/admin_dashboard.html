@@ -12,10 +12,6 @@
           <span class="button-icon">➕</span>
           Create Exam
         </button>
-        <button class="action-button secondary" onclick="window.location.href='{{ url_for('admin_results') }}'">
-          <span class="button-icon">📈</span>
-          View Results
-        </button>
       </div>
     </div>
   </header>
@@ -37,6 +33,46 @@
     <div class="stat-card">
       <div class="stat-value" id="stat-avg-score">-</div>
       <div class="stat-label">Average Score</div>
+    </div>
+  </div>
+
+  <!-- Results / Tests Selector (card layout like screenshot) -->
+  <div class="card mb-4">
+    <div class="card-header">
+      <h3 class="mb-0">Select a Test to View Results</h3>
+    </div>
+    <div class="card-body">
+      {% if exams %}
+        <div class="results-grid">
+          {% for ex in exams %}
+            <div class="result-card">
+              <div class="card-top">
+                <h4 class="card-title">{{ ex.title }}</h4>
+                <span class="status-pill">Completed</span>
+              </div>
+              <div class="card-meta">
+                <div class="meta-row"><span class="meta-icon">📅</span>
+                  <span class="meta-text">{% if ex.start_time %}{{ ex.start_time }}{% else %}—{% endif %}</span>
+                </div>
+                <div class="meta-row"><span class="meta-icon">⏱️</span>
+                  <span class="meta-text">{{ ex.duration_minutes }} minutes</span>
+                </div>
+                <div class="meta-row"><span class="meta-icon">🎯</span>
+                  <span class="meta-text">{{ ex.max_questions }} questions</span>
+                </div>
+              </div>
+              <div class="card-divider"></div>
+              <div class="card-footer">
+                <a href="{{ url_for('admin_results') }}?exam_id={{ ex.id }}" class="btn view-btn">👁️ View Results</a>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">
+          <p>📋 No exams available</p>
+        </div>
+      {% endif %}
     </div>
   </div>
 

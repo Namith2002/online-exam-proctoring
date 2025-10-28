@@ -3,17 +3,18 @@
 /* CSS Variables - Theme system with light/dark modes */
 :root {
   /* Colors */
-  --primary-color: #4285f4;
-  --primary-light: #6ba4f8;
-  --primary-dark: #2b579a;
-  --secondary-color: #34a853;
-  --success-color: #34a853;
-  --warning-color: #fbbc05;
-  --danger-color: #ea4335;
-  --background-color: #f8f9fc;
+  /* New theme palette (Teal primary / Violet accent) */
+  --primary-color: #0ea5a4; /* teal-500 */
+  --primary-light: #5eead4; /* teal-200 */
+  --primary-dark: #0b7280;  /* teal-700 */
+  --secondary-color: #7c3aed; /* violet-600 */
+  --success-color: #10b981; /* green */
+  --warning-color: #f59e0b; /* amber */
+  --danger-color: #ef4444;  /* red */
+  --background-color: #f7fbfb; /* very light tealish background */
   --surface-color: #ffffff;
-  --text-primary: #202124;
-  --text-secondary: #5f6368;
+  --text-primary: #0f1724;
+  --text-secondary: #475569;
   
   /* Gradients */
   --primary-gradient: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%);
@@ -68,20 +69,22 @@
 
 /* Dark theme (default) */
 :root, [data-theme="dark"] {
-  --primary-color: #4f46e5;
-  --primary-hover: #4338ca;
+  /* Dark theme variables tuned to the new palette */
+  --primary-color: #14b8a6; /* teal brighter */
+  --primary-hover: #0f766e;
   --success-color: #10b981;
   --warning-color: #f59e0b;
   --danger-color: #ef4444;
-  --background: #0f172a;
-  --background-secondary: #1e293b;
-  --surface: #334155;
-  --surface-hover: #475569;
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --border-color: #475569;
-  --secondary-color: #94a3b8;
-  --accent-glow: rgba(79, 70, 229, 0.2);
+  --background: #071724; /* deep tealish navy */
+  --background-color: #071724;
+  --background-secondary: #0b2a36;
+  --surface: #0f3b3f;
+  --surface-hover: #124f53;
+  --text-primary: #e6fffb;
+  --text-secondary: #90e9df;
+  --border-color: #0f4b4f;
+  --secondary-color: #7c3aed;
+  --accent-glow: rgba(20, 184, 166, 0.18);
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.25);
   --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.3);
@@ -93,22 +96,24 @@
 
 /* Light theme - Google-inspired colors */
 [data-theme="light"] {
-  --primary-color: #4285f4;
-  --primary-light: #6ba4f8;
-  --primary-dark: #2b579a;
-  --secondary-color: #34a853;
-  --success-color: #34a853;
-  --warning-color: #fbbc05;
-  --danger-color: #ea4335;
-  --danger-light: #fce8e6;
-  --background: #f8f9fc;
-  --background-secondary: #f1f3f4;
+  /* Light theme variables tuned to the new palette */
+  --primary-color: #0ea5a4;
+  --primary-light: #5eead4;
+  --primary-dark: #0b7280;
+  --secondary-color: #7c3aed;
+  --success-color: #10b981;
+  --warning-color: #f59e0b;
+  --danger-color: #ef4444;
+  --danger-light: #fff1f0;
+  --background: #f7fbfb;
+  --background-color: #f7fbfb;
+  --background-secondary: #eef8f7;
   --surface: #ffffff;
-  --surface-hover: #f1f3f4;
-  --text-primary: #202124;
-  --text-secondary: #5f6368;
-  --border-color: #dadce0;
-  --accent-glow: rgba(66, 133, 244, 0.1);
+  --surface-hover: #f1fbfa;
+  --text-primary: #071724;
+  --text-secondary: #4b5563;
+  --border-color: #d6eef0;
+  --accent-glow: rgba(14, 165, 164, 0.12);
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.08);
   --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.12);
@@ -824,14 +829,14 @@ p {
 }
 
 .timer.warning .timer-value {
-  background: linear-gradient(135deg, #ffd166 0%, #f9a825 100%);
+  background: linear-gradient(135deg, var(--warning-color) 0%, var(--primary-color) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 .timer.danger .timer-value {
-  background: linear-gradient(135deg, #ef476f 0%, #c81e4c 100%);
+  background: linear-gradient(135deg, var(--danger-color) 0%, var(--secondary-color) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;

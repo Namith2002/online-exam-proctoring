@@ -5,8 +5,16 @@ from werkzeug.security import generate_password_hash, check_password_hash
 DB = "exam.db"
 
 def get_conn():
-    conn = sqlite3.connect(DB)
+    # Increase timeout to wait for locks; enable WAL and tuned sync
+    conn = sqlite3.connect(DB, timeout=15)
     conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA busy_timeout = 15000")
+        conn.execute("PRAGMA synchronous = NORMAL")
+    except Exception:
+        pass
     return conn
 
 def init_db():
@@ -86,17 +94,6 @@ def init_db():
     );
     """)
 
-    # proctor audio
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS proctor_audio (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        attempt_id INTEGER,
-        filename TEXT,
-        timestamp TEXT,
-        FOREIGN KEY(attempt_id) REFERENCES attempts(id)
-    );
-    """)
-
     # proctor events (tab switch, focus, etc.)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS proctor_events (
@@ -108,6 +105,14 @@ def init_db():
         FOREIGN KEY(attempt_id) REFERENCES attempts(id)
     );
     """)
+
+    # Remove legacy audio table if present
+    cur.execute("DROP TABLE IF EXISTS proctor_audio")
+    cur.execute("DROP INDEX IF EXISTS idx_proctor_audio_attempt")
+
+    # indexes for proctor tables
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_proctor_images_attempt ON proctor_images(attempt_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_proctor_events_attempt ON proctor_events(attempt_id)")
 
     conn.commit()
     conn.close()

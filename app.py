@@ -2,16 +2,18 @@
 import os
 import uuid
 import base64
+import time
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from flask import (Flask, render_template, request, redirect, url_for,
                    session, flash, jsonify, send_from_directory, abort)
+from werkzeug.utils import secure_filename
+from threading import Lock                       # <--- added
 from models import init_db, get_conn, create_user, verify_user
 
 # ---- Configuration ----
 UPLOAD_IMG = "uploads/proctor_images"
-UPLOAD_AUDIO = "uploads/proctor_audio"
 os.makedirs(UPLOAD_IMG, exist_ok=True)
-os.makedirs(UPLOAD_AUDIO, exist_ok=True)
 
 # limit uploads to 6 MB (safety)
 MAX_MB = 6
@@ -31,7 +33,7 @@ def ensure_demo_admin():
     try:
         conn = get_conn()
         cur = conn.cursor()
-        cur.execute("SELECT * FROM users WHERE username=?", (ADMIN_USERNAME,))
+        cur.execute("SELECT * FROM users WHERE username= ?", (ADMIN_USERNAME,))
         if not cur.fetchone():
             create_user(ADMIN_USERNAME, ADMIN_PASSWORD, is_admin=1)
         conn.close()
@@ -83,7 +85,7 @@ def admin_login():
         if uname == ADMIN_USERNAME and pwd == ADMIN_PASSWORD:
             try:
                 conn = get_conn(); cur = conn.cursor()
-                cur.execute("SELECT * FROM users WHERE username=?", (ADMIN_USERNAME,))
+                cur.execute("SELECT * FROM users WHERE username= ?", (ADMIN_USERNAME,))
                 row = cur.fetchone()
                 conn.close()
                 if row:
@@ -218,7 +220,7 @@ def edit_exam(exam_id):
         title = request.form.get("title")
         duration = int(request.form.get("duration") or exam['duration_minutes'])
         max_q = min(50, int(request.form.get("max_questions") or exam['max_questions']))
-        cur.execute("UPDATE exams SET title=?, duration_minutes=?, max_questions=? WHERE id=?",
+        cur.execute("UPDATE exams SET title=?, duration_minutes=?, max_questions=? WHERE id= ?",
                     (title, duration, max_q, exam_id))
         cur.execute("DELETE FROM questions WHERE exam_id=?", (exam_id,))
         for i in range(1, max_q + 1):
@@ -260,24 +262,51 @@ def start_exam(exam_id):
     return render_template("exam.html", exam=exam, questions=questions, attempt_id=attempt_id, allowed_until=allowed_until_iso)
 
 # ------------------ AUTOSAVE ANSWER ------------------
+# minimal changes here: validate FK and add db_lock + retry/backoff
+db_lock = Lock()  # global lock to serialize writers and avoid 'database is locked'
+
 @app.route("/save_answer", methods=["POST"])
 def save_answer():
     data = request.get_json()
     attempt_id = data.get("attempt_id")
     question_id = data.get("question_id")
     selected = data.get("selected")
-    conn = get_conn(); cur = conn.cursor()
-    cur.execute("SELECT * FROM attempts WHERE id=?", (attempt_id,))
-    if not cur.fetchone():
-        conn.close(); return jsonify({"status":"error", "msg":"attempt not found"}), 404
-    cur.execute("SELECT * FROM answers WHERE attempt_id=? AND question_id=?", (attempt_id, question_id))
-    existing = cur.fetchone()
-    if existing:
-        cur.execute("UPDATE answers SET selected=? WHERE id=?", (selected, existing["id"]))
-    else:
-        cur.execute("INSERT INTO answers (attempt_id, question_id, selected) VALUES (?,?,?)",
-                    (attempt_id, question_id, selected))
-    conn.commit(); conn.close()
+
+    # Lock around DB operations that write
+    with db_lock:
+        conn = get_conn(); cur = conn.cursor()
+
+        # Validate attempt exists (prevents foreign key failure)
+        cur.execute("SELECT id FROM attempts WHERE id=?", (attempt_id,))
+        if not cur.fetchone():
+            conn.close(); return jsonify({"status":"error", "msg":"attempt not found"}), 404
+
+        # Validate question exists (prevents foreign key failure)
+        cur.execute("SELECT id FROM questions WHERE id=?", (question_id,))
+        if not cur.fetchone():
+            conn.close(); return jsonify({"status":"error", "msg":"question not found"}), 404
+
+        # Retry writes to avoid transient sqlite 'database is locked' errors
+        max_retries = 5
+        for i in range(max_retries):
+            try:
+                cur.execute("SELECT id FROM answers WHERE attempt_id=? AND question_id=?", (attempt_id, question_id))
+                existing = cur.fetchone()
+                if existing:
+                    cur.execute("UPDATE answers SET selected=? WHERE id=?", (selected, existing["id"]))
+                else:
+                    cur.execute("INSERT INTO answers (attempt_id, question_id, selected) VALUES (?,?,?)",
+                                (attempt_id, question_id, selected))
+                conn.commit()
+                break
+            except sqlite3.OperationalError as e:
+                if 'locked' in str(e).lower() and i < max_retries - 1:
+                    time.sleep(0.1 * (i + 1))
+                    continue
+                else:
+                    conn.close()
+                    raise
+        conn.close()
     return jsonify({"status":"ok"})
 
 # ------------------ PROCTOR: UPLOAD IMAGE ------------------
@@ -298,59 +327,42 @@ def proctor_upload_image():
     # Save file (filename as uuid)
     fname = f"{uuid.uuid4().hex}.jpg"
     path = os.path.join(UPLOAD_IMG, fname)
+    # Ensure directory exists in case it was deleted while server is running
+    try:
+        os.makedirs(UPLOAD_IMG, exist_ok=True)
+    except Exception:
+        pass
     with open(path, "wb") as f:
         f.write(data)
-    conn = get_conn(); cur = conn.cursor()
-    cur.execute("INSERT INTO proctor_images (attempt_id, filename, timestamp) VALUES (?,?,?)",
-                (attempt_id, fname, datetime.now(timezone.utc).isoformat()))
-    conn.commit(); conn.close()
+
+    # Validate attempt exists and write under lock
+    with db_lock:
+        conn = get_conn(); cur = conn.cursor()
+        cur.execute("SELECT id FROM attempts WHERE id=?", (attempt_id,))
+        if not cur.fetchone():
+            # attempt not found — still keep the file but report error
+            conn.close()
+            return jsonify({"status":"error","msg":"invalid attempt_id"}), 400
+
+        # insert image record with retry/backoff
+        max_retries = 5
+        for i in range(max_retries):
+            try:
+                cur.execute("INSERT INTO proctor_images (attempt_id, filename, timestamp) VALUES (?,?,?)",
+                            (attempt_id, fname, datetime.now(timezone.utc).isoformat()))
+                conn.commit()
+                break
+            except sqlite3.OperationalError as e:
+                if 'locked' in str(e).lower() and i < max_retries - 1:
+                    time.sleep(0.1 * (i + 1))
+                    continue
+                else:
+                    conn.close()
+                    raise
+        conn.close()
+
     return jsonify({"status":"ok"})
 
-# ------------------ PROCTOR: UPLOAD AUDIO ------------------
-@app.route("/proctor/upload_audio", methods=["POST"])
-def proctor_upload_audio():
-    if 'user_id' not in session:
-        return jsonify({"status":"error","msg":"unauthorized"}), 401
-        
-    attempt_id = request.form.get("attempt_id")
-    audio = request.files.get("audio")
-    
-    if not attempt_id:
-        return jsonify({"status":"error","msg":"missing attempt_id"}), 400
-    if not audio:
-        return jsonify({"status":"error","msg":"no audio file"}), 400
-        
-    # Verify file type and size
-    if not audio.filename.lower().endswith(('.webm', '.wav', '.mp3')):
-        return jsonify({"status":"error","msg":"invalid audio format"}), 400
-    if len(audio.read()) > MAX_MB * 1024 * 1024:  # Check against MAX_MB limit
-        return jsonify({"status":"error","msg":"file too large"}), 400
-    audio.seek(0)  # Reset file pointer after reading
-    
-    try:
-        fname = f"{uuid.uuid4().hex}.webm"
-        path = os.path.join(UPLOAD_AUDIO, fname)
-        
-        # Ensure upload directory exists
-        os.makedirs(UPLOAD_AUDIO, exist_ok=True)
-        
-        # Save the file
-        try:
-            audio.save(path)
-            if not os.path.exists(path) or os.path.getsize(path) == 0:
-                raise ValueError("Failed to save audio file or file is empty")
-        except Exception as e:
-            app.logger.error(f"Error saving audio file: {str(e)}")
-            return jsonify({"status":"error","msg":"failed to save audio"}), 500
-
-        conn = get_conn(); cur = conn.cursor()
-        cur.execute("INSERT INTO proctor_audio (attempt_id, filename, timestamp) VALUES (?,?,?)",
-                    (attempt_id, fname, datetime.now(timezone.utc).isoformat()))
-        conn.commit(); conn.close()
-        return jsonify({"status":"ok"})
-    except Exception as e:
-        print(f"Audio upload error: {str(e)}")
-        return jsonify({"status":"error","msg":"server error"}), 500
 
 # ------------------ PROCTOR: LOG EVENT ------------------
 @app.route("/proctor/log_event", methods=["POST"])
@@ -359,10 +371,29 @@ def proctor_log_event():
     attempt_id = data.get("attempt_id")
     ev = data.get("event")
     detail = data.get("detail", "")
-    conn = get_conn(); cur = conn.cursor()
-    cur.execute("INSERT INTO proctor_events (attempt_id, event_type, detail, timestamp) VALUES (?,?,?,?)",
-                (attempt_id, ev, detail, datetime.now(timezone.utc).isoformat()))
-    conn.commit(); conn.close()
+
+    # Validate attempt and write under lock with retries
+    with db_lock:
+        conn = get_conn(); cur = conn.cursor()
+        cur.execute("SELECT id FROM attempts WHERE id=?", (attempt_id,))
+        if not cur.fetchone():
+            conn.close(); return jsonify({"status":"error","msg":"invalid attempt_id"}), 400
+
+        max_retries = 5
+        for i in range(max_retries):
+            try:
+                cur.execute("INSERT INTO proctor_events (attempt_id, event_type, detail, timestamp) VALUES (?,?,?,?)",
+                            (attempt_id, ev, detail, datetime.now(timezone.utc).isoformat()))
+                conn.commit()
+                break
+            except sqlite3.OperationalError as e:
+                if 'locked' in str(e).lower() and i < max_retries - 1:
+                    time.sleep(0.1 * (i + 1))
+                    continue
+                else:
+                    conn.close()
+                    raise
+        conn.close()
     return jsonify({"status":"ok"})
 
 # ------------------ SUBMIT EXAM (STUDENT) ------------------
@@ -391,15 +422,28 @@ def submit_exam():
     score = 0
     total = len(qrows)
     for q in qrows:
-        cur.execute("SELECT selected FROM answers WHERE attempt_id=? AND question_id=?", (attempt_id, q['id']))
+        cur.execute("SELECT selected FROM answers WHERE attempt_id=? AND question_id= ?", (attempt_id, q['id']))
         ans = cur.fetchone()
         if ans and ans['selected'] and ans['selected'] == q['correct']:
             score += 1
     # Store percentage score (0-100)
     percentage = round((score / total * 100), 1) if total > 0 else 0
-    cur.execute("UPDATE attempts SET score=?, end_time=?, submitted=1, time_exceeded=? WHERE id=?",
-                (percentage, now.isoformat(), time_exceeded, attempt_id))
-    conn.commit(); conn.close()
+    # Perform update with retries to avoid transient 'database is locked'
+    max_retries = 5
+    for i in range(max_retries):
+        try:
+            cur.execute("UPDATE attempts SET score=?, end_time=?, submitted=1, time_exceeded=? WHERE id=?",
+                        (percentage, now.isoformat(), time_exceeded, attempt_id))
+            conn.commit()
+            break
+        except sqlite3.OperationalError as e:
+            if 'locked' in str(e).lower() and i < max_retries - 1:
+                time.sleep(0.2 * (i + 1))
+                continue
+            else:
+                conn.close()
+                raise
+    conn.close()
     flash("Exam submitted. Results will be visible to admin only.", "success")
     return redirect(url_for("student_dashboard"))
 
@@ -409,8 +453,29 @@ def admin_results():
     if 'user_id' not in session or not session.get('is_admin'):
         return redirect(url_for("admin_login"))
     conn = get_conn(); cur = conn.cursor()
-    # Get all attempts with additional data including raw scores
-    cur.execute("""
+    # Optional: filter by exam id so each exam can have its own results view
+    exam_id = request.args.get('exam_id')
+    if exam_id:
+        # when exam_id provided, filter attempts to that exam only
+        cur.execute("""
+        SELECT 
+            a.*,
+            u.username,
+            e.title as exam_title,
+            e.max_questions,
+            COUNT(DISTINCT CASE WHEN ans.selected = q.correct THEN ans.id END) as raw_score
+        FROM attempts a
+        LEFT JOIN users u ON u.id = a.user_id
+        LEFT JOIN exams e ON e.id = a.exam_id
+        LEFT JOIN answers ans ON ans.attempt_id = a.id
+        LEFT JOIN questions q ON q.id = ans.question_id
+        WHERE a.exam_id = ?
+        GROUP BY a.id, a.user_id, a.exam_id, a.start_time, a.end_time, a.submitted, 
+                a.score, a.time_exceeded, a.allowed_until, u.username, e.title, e.max_questions
+        ORDER BY (a.score IS NULL) ASC, a.score DESC, a.start_time DESC""", (exam_id,))
+    else:
+        # Get all attempts with additional data including raw scores
+        cur.execute("""
         SELECT 
             a.*,
             u.username,
@@ -430,18 +495,35 @@ def admin_results():
     # Prepare results list for grouped exam results
     results = []
     for a in attempts:
-        if a['submitted'] and a['score'] is not None:
+        # sqlite3.Row doesn't implement .get(), use index access
+        submitted = a['submitted'] if 'submitted' in a.keys() else None
+        score = a['score'] if 'score' in a.keys() else None
+        if submitted and score is not None:
             results.append({
-                'exam_name': a['exam_title'],
-                'student_name': a['username'],
-                'score': a['score'],
-                'raw_score': a['raw_score'],
-                'total_questions': a['max_questions'],
-                'timestamp': a['end_time']
+                'exam_name': a['exam_title'] if 'exam_title' in a.keys() else None,
+                'student_name': a['username'] if 'username' in a.keys() else None,
+                'score': score,
+                'raw_score': a['raw_score'] if 'raw_score' in a.keys() else None,
+                'total_questions': a['max_questions'] if 'max_questions' in a.keys() else None,
+                'timestamp': a['end_time'] if 'end_time' in a.keys() else None
             })
     
+    # If exam_id provided, fetch exam title for nicer heading
+    exam_title = None
+    if exam_id:
+        try:
+            exam_conn = get_conn()
+            exam_cur = exam_conn.cursor()
+            exam_cur.execute("SELECT title FROM exams WHERE id=?", (exam_id,))
+            row = exam_cur.fetchone()
+            if row:
+                # sqlite3.Row supports indexing by column name
+                exam_title = row['title'] if 'title' in row.keys() else row[0]
+            exam_conn.close()
+        except Exception:
+            exam_title = None
     conn.close()
-    return render_template("admin_results.html", attempts=attempts, results=results)
+    return render_template("admin_results.html", attempts=attempts, results=results, exam_title=exam_title)
 
 # ------------------ ADMIN: VIEW ATTEMPT DETAIL ------------------
 @app.route("/admin/attempt/<int:attempt_id>")
@@ -459,8 +541,6 @@ def admin_attempt_detail(attempt_id):
         conn.close(); abort(404)
     cur.execute("SELECT * FROM proctor_images WHERE attempt_id=? ORDER BY timestamp", (attempt_id,))
     images = cur.fetchall()
-    cur.execute("SELECT * FROM proctor_audio WHERE attempt_id=? ORDER BY timestamp", (attempt_id,))
-    audios = cur.fetchall()
     cur.execute("SELECT * FROM proctor_events WHERE attempt_id=? ORDER BY timestamp", (attempt_id,))
     events = cur.fetchall()
     cur.execute("""SELECT q.q_index, q.question, q.option_a, q.option_b, q.option_c, q.option_d, q.correct, a.selected
@@ -469,40 +549,13 @@ def admin_attempt_detail(attempt_id):
                    WHERE q.exam_id = ? ORDER BY q.q_index""", (attempt_id, att['exam_id']))
     q_and_a = cur.fetchall()
     conn.close()
-    return render_template("admin_attempt.html", att=att, images=images, audios=audios, events=events, q_and_a=q_and_a)
+    return render_template("admin_attempt.html", att=att, images=images, events=events, q_and_a=q_and_a)
 
 # ------------------ SERVE UPLOADS ------------------
 @app.route("/uploads/proctor_images/<path:fname>")
 def serve_image(fname):
     return send_from_directory(UPLOAD_IMG, fname)
 
-@app.route("/uploads/proctor_audio/<path:fname>")
-def serve_audio(fname):
-    if 'user_id' not in session:
-        abort(401)  # Unauthorized
-    if not session.get('is_admin'):
-        # For non-admins, verify they own the attempt
-        conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT pa.* FROM proctor_audio pa
-            JOIN attempts a ON a.id = pa.attempt_id
-            WHERE pa.filename = ? AND a.user_id = ?
-        """, (fname, session['user_id']))
-        if not cur.fetchone():
-            conn.close()
-            abort(403)  # Forbidden
-        conn.close()
-    
-    # Validate filename
-    if not fname or '..' in fname or not os.path.exists(os.path.join(UPLOAD_AUDIO, fname)):
-        abort(404)
-    
-    try:
-        return send_from_directory(UPLOAD_AUDIO, fname, mimetype='audio/webm')
-    except Exception as e:
-        app.logger.error(f"Error serving audio file {fname}: {str(e)}")
-        abort(500)
 
 # ------------------ API: Admin Stats ------------------
 @app.route("/api/admin/stats")

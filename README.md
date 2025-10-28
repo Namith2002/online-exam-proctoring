@@ -6,7 +6,7 @@ A secure and user-friendly online examination system with automated proctoring c
 
 ### Student Features
 
-- 📝 Take exams from any location with a webcam and microphone
+- 📝 Take exams from any location with a webcam
 - ⏱️ Real-time exam timer with auto-submit
 - 💾 Auto-save answers as you progress
 - 📊 View your exam history and scores
@@ -17,13 +17,12 @@ A secure and user-friendly online examination system with automated proctoring c
 - ✏️ Create and edit exams with multiple-choice questions
 - ⚙️ Configure exam duration and settings
 - 👥 Monitor student attempts in real-time
-- 📸 Review proctoring data (webcam snapshots & audio)
+- 📸 Review proctoring data (webcam snapshots)
 - 📈 View detailed exam analytics and results
 
 ### Security Features
 
 - 📷 Automated webcam snapshots every 15 seconds
-- 🎤 Audio recording in 20-second intervals
 - 🚫 Tab switch detection
 - ⚠️ Window blur monitoring
 - 🕒 Time tracking and enforcement
@@ -33,7 +32,7 @@ A secure and user-friendly online examination system with automated proctoring c
 ### System Requirements
 
 - Python 3.8 or higher
-- Modern web browser with webcam and microphone support
+- Modern web browser with webcam support
 - SQLite3
 
 ### Installation Steps
@@ -92,7 +91,6 @@ online-exam-proctoring/
 │   └── js/            # JavaScript files
 ├── templates/          # HTML templates
 └── uploads/           # Proctoring data storage
-    ├── proctor_audio/
     └── proctor_images/
 ```
 
@@ -126,7 +124,7 @@ Tested and working on:
 
 - **UI Framework**: Custom CSS with responsive design
 - **JavaScript**: Vanilla JS with modern APIs
-- **Media Handling**: MediaRecorder API
+- **Media Handling**: getUserMedia snapshots and fetch uploads
 - **Real-time Updates**: Fetch API
 
 ## 🤝 Development Guide
@@ -166,12 +164,11 @@ For support, please create an issue in the GitHub repository or contact the main
 - ✏️ Create and edit exams with multiple-choice questions
 - ⚙️ Configure exam duration and settings
 - 👥 Monitor student attempts in real-time
-- 📸 Review proctoring data (webcam snapshots & audio)
+- 📸 Review proctoring data (webcam snapshots)
 - 📈 View detailed exam analytics and results
 
 ### Proctoring Features
 - 📷 Automated webcam snapshots every 15 seconds
-- 🎤 Audio recording in 20-second intervals
 - 🚫 Tab switch detection
 - ⚠️ Window blur monitoring
 - 🕒 Time tracking and enforcement
@@ -180,7 +177,7 @@ For support, please create an issue in the GitHub repository or contact the main
 
 ### Prerequisites
 - Python 3.8 or higher
-- Modern web browser with webcam and microphone support
+- Modern web browser with webcam support
 - SQLite3
 
 ### Installation
@@ -233,7 +230,6 @@ online-exam-proctoring/
 │   └── js/            # JavaScript files
 ├── templates/          # HTML templates
 └── uploads/           # Proctoring data storage
-    ├── proctor_audio/
     └── proctor_images/
 ```
 
